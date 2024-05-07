@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title text-center">Adaugă Întrebări</h5>
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="discipline">Discipline</label>
+                            <select class="form-control" id="discipline" name="discipline">
+                                {% for discipline in disciplines %}
+                                    <option value="{{ discipline.id }}">{{ discipline.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="quiz">Quiz</label>
+                            <select class="form-control" id="quiz" name="quiz">
+                                <option value="">Выберите дисциплину сначала</option>
+                            </select>
+                        </div>
+                        <!-- Остальные поля формы -->
+                        <button type="submit" class="btn btn-primary">Ok</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Обработчик события изменения выбора дисциплины
+        document.getElementById('discipline').addEventListener('change', function() {
+            let disciplineId = this.value;
+            let quizSelect = document.getElementById('quiz');
+            
+            // Очистим список квизов
+            quizSelect.innerHTML = '<option value="">Загрузка...</option>';
+            
+            // Отправляем AJAX запрос на сервер для получения списка квизов
+            fetch('/get_quizzes/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken') // Получаем CSRF токен из куки
+                },
+                body: JSON.stringify({'discipline_id': disciplineId})
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if ('quizzes_html' in data) {
+                    quizSelect.innerHTML = data.quizzes_html;
+                } else if ('error' in data) {
+                    throw new Error(data.error);
+                } else {
+                    throw new Error('Invalid response from server');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error.message);
+                quizSelect.innerHTML = '<option value="">Ошибка при загрузке квизов</option>';
+            });
+        });
+    });
+    
+    // Функция для получения значения CSRF токена из куки
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            let cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                let cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    </script>
+    
+{% endblock content %}

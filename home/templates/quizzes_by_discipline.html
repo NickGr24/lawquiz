@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2 class="text-center mb-4">Quizz'uri la {{ discipline.name }}</h2>
+    <ul class="list-group">
+        {% if quizzes %}
+            {% for quiz in quizzes %}
+            <li class="list-group-item">
+                <a href="{% url 'take_quiz' quiz.id %}">{{ quiz.title }}</a>
+            </li>
+            {% endfor %}
+        {% else %}
+            <h2 class="text-center">În elaborare...</h2>
+        {% endif %}
+    </ul>
+</div>
+{% endblock content %}
