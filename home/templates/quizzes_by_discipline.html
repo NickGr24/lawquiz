@@ -1,18 +1,26 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="container mt-5">
-    <h2 class="text-center mb-4">Quizz'uri la {{ discipline.name }}</h2>
-    <ul class="list-group">
-        {% if quizzes %}
-            {% for quiz in quizzes %}
-            <li class="list-group-item">
-                <a href="{% url 'take_quiz' quiz.id %}">{{ quiz.title }}</a>
-            </li>
-            {% endfor %}
-        {% else %}
-            <h2 class="text-center">În elaborare...</h2>
-        {% endif %}
-    </ul>
+<div class="min-h-screen flex flex-col bg-gray-50">
+    <div class="flex-grow container mx-auto py-12">
+        <h2 class="text-center text-3xl font-bold mb-8 text-gray-800">Quizz'uri la {{ discipline.name }}</h2>
+        <div class="max-w-3xl mx-auto">
+            <ul class="space-y-6">
+                {% if quizzes_with_status %}
+                    {% for item in quizzes_with_status %}
+                    <li class="bg-white shadow-lg p-6 rounded-lg hover:bg-blue-50 transition-all duration-300 flex justify-between items-center">
+                        <a href="{% url 'take_quiz' item.quiz.id %}" class="text-xl font-medium text-blue-600 hover:underline">
+                            {{ item.quiz.title }}
+                        </a>
+                    </li>
+                    {% endfor %}
+                {% else %}
+                    <li>
+                        <h2 class="text-center text-lg font-semibold text-gray-600">În elaborare...</h2>
+                    </li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
 </div>
 {% endblock content %}

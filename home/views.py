@@ -3,24 +3,36 @@ from django.contrib.auth import login, authenticate
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth import logout
 from django.contrib.auth.forms import UserCreationForm
-from .models import Discipline, Quiz, Question, Answer
+from .models import Discipline, Quiz, Question, Answer, Marks_Of_User
 from .forms import QuestionForm, AnswerForm, QuizForm
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count
 from django.http import JsonResponse
+from django.db import IntegrityError
 
 def home(request):
     disciplines = Discipline.objects.all()
     return render(request, 'home.html', {'disciplines': disciplines})
 
+
 @login_required
 def quizzes_by_discipline(request, discipline_id):
     discipline = get_object_or_404(Discipline, id=discipline_id)
     quizzes = Quiz.objects.filter(discipline=discipline)
+
+    # Fetch the user's completed quizzes
+    completed_quizzes = Marks_Of_User.objects.filter(user=request.user).values_list('quiz_id', flat=True)
+
+    # Prepare quizzes with status
+    quizzes_with_status = []
+    for quiz in quizzes:
+        status = "Пройден" if quiz.id in completed_quizzes else "Не пройден"
+        quizzes_with_status.append({'quiz': quiz, 'status': status})
+    print(f"Completed quizzes for user {request.user.id}: {completed_quizzes}")
+
     context = {
-            'discipline': discipline,
-            'quizzes': quizzes,
-            }
+        'discipline': discipline,
+        'quizzes_with_status': quizzes_with_status,
+    }
     return render(request, 'quizzes_by_discipline.html', context)
 
 @login_required
@@ -28,77 +40,96 @@ def take_quiz(request, quiz_id):
     quiz = get_object_or_404(Quiz, id=quiz_id)
     questions = Question.objects.filter(quiz=quiz)
     total_questions = questions.count()
-    question_number = int(request.session.get('question_number', 1))
-    
+
+    # Initialize session data if it doesn't exist
+    if 'question_number' not in request.session:
+        request.session['question_number'] = 1
+        request.session['user_answers'] = []
+        request.session['score'] = 0
+
+    question_number = request.session['question_number']
+
+    # Handle POST request (answer submission)
     if request.method == 'POST':
-        # Обработка ответа пользователя
+        if question_number > total_questions:
+            return redirect('quiz_results', quiz_id=quiz_id)  # Prevent redundant submission
+
         selected_answer_id = request.POST.get('selected_answer_id')
-        question = get_object_or_404(Question, id=request.POST.get('question_id'))
-        correct_answer_id = question.answer_set.filter(correct=True).first().id
-        
-        # Проверяем, правильный ли был ответ и обновляем счет
-        score = request.session.get('score', 0)
-        if selected_answer_id == str(correct_answer_id):
-            score += 1
-        request.session['score'] = score
+        current_question = questions[question_number - 1]
+        correct_answer = current_question.answer_set.filter(correct=True).first()
 
-        # Переходим к следующему вопросу
-        question_number += 1
-        request.session['question_number'] = question_number
+        # Append or update user answers
+        user_answers = request.session['user_answers']
+        user_answers.append({
+            'question_id': current_question.id,
+            'selected': int(selected_answer_id) if selected_answer_id else None,
+            'correct': correct_answer.id
+        })
+        request.session['user_answers'] = user_answers
 
-        # Проверяем, есть ли еще вопросы
-        if question_number <= total_questions:
-            # Перенаправляем пользователя на страницу следующего вопроса
-            return redirect('take_quiz', quiz_id=quiz_id)
-        else:
-            # Если вопросы закончились, перенаправляем на страницу результатов
-            percentage = (score / total_questions) * 100
-            rounded_percentage = int(percentage)
-            
-            # Удаление данных из сессии
-            del request.session['question_number']
-            del request.session['score']
+        # Update score
+        if selected_answer_id and int(selected_answer_id) == correct_answer.id:
+            request.session['score'] += 1
 
-            return render(request, 'quiz_results.html', {'score': score, 'total_questions': total_questions, 'percentage': rounded_percentage})
+        # Increment question number
+        request.session['question_number'] += 1
 
-    # Если пользователь уже прошел все вопросы, перенаправляем на страницу результатов
+        # Redirect to results page if quiz is completed
+        if request.session['question_number'] > total_questions:
+            return redirect('quiz_results', quiz_id=quiz_id)
+
+        return redirect('take_quiz', quiz_id=quiz_id)
+
+    # Handle GET request
     if question_number > total_questions:
         return redirect('quiz_results', quiz_id=quiz_id)
 
-    # Получаем текущий вопрос для отображения
     current_question = questions[question_number - 1]
-    
+
+    # Debugging: Print session state
+    print(f"Session Data during quiz: {dict(request.session.items())}")
+
     context = {
         'quiz': quiz,
         'current_question': current_question,
         'question_number': question_number,
-        'total_questions': total_questions
+        'total_questions': total_questions,
     }
-
     return render(request, 'take_quiz.html', context)
+
 
 
 @login_required
 def quiz_results(request, quiz_id):
     quiz = get_object_or_404(Quiz, id=quiz_id)
+
+    # Check for session data
+    user_answers = request.session.get('user_answers', [])
     score = request.session.get('score', 0)
-    total_questions = request.session.get('total_questions', 0)
+    question_number = request.session.get('question_number', 0)
+
+    if question_number <= 0 or not user_answers:
+        return redirect('take_quiz', quiz_id=quiz_id)  # Redirect if session data is incomplete
+
+    total_questions = len(user_answers)
     percentage = (score / total_questions) * 100 if total_questions > 0 else 0
-    ques_number = request.session.get('question_number')
-    if 'score' in request.session:
-        del request.session['score']
-    if 'total_questions' in request.session:
-        del request.session['total_questions']
-    print(total_questions)
-    print(score)
-    request.session['question_number'] = 1
-    print(ques_number)
-    
+
+    # Get all questions related to the quiz
+    question_ids = [ans['question_id'] for ans in user_answers]
+    questions = Question.objects.filter(id__in=question_ids)
+
+    # Clear session data after completion
+    request.session.pop('question_number', None)
+    request.session.pop('user_answers', None)
+    request.session.pop('score', None)
+
     context = {
-            'quiz': quiz,
-            'score': score,
-            'total_questions': total_questions,
-            'percentage': percentage
+        'quiz': quiz,
+        'score': score,
+        'total_questions': total_questions,
+        'percentage': percentage,
+        'questions': questions,
+        'user_answers': user_answers,
     }
     return render(request, 'quiz_results.html', context)
 
@@ -107,14 +138,12 @@ def register(request):
         form = UserCreationForm(request.POST)
         if form.is_valid():
             user = form.save()
-            # Authenticate the user
             username = form.cleaned_data.get('username')
             password = form.cleaned_data.get('password1')
             user = authenticate(username=username, password=password)
             if user is not None:
-                # Log in the user
                 login(request, user)
-                return redirect('home')  # Redirect to the home page after successful login
+                return redirect('home')  
     else:
         form = UserCreationForm()
     return render(request, 'authentication/register.html', {'form': form})

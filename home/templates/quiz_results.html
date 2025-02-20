@@ -1,19 +1,77 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="container mt-5">
-    <div class="card">
-        <div class="card-body">
-            <h2 class="card-title text-center">Rezultatele Quiz-ului</h2>
-            <p class="card-text text-center">Scorul: {{ score }} / {{ total_questions }}</p>
-            <div class="progress">
-                <div class="progress-bar bg-success" role="progressbar" style="width: {{ percentage }}%" aria-valuenow="{{ percentage }}" aria-valuemin="0" aria-valuemax="100">{{ percentage }}%</div>
+<div class="container mx-auto mt-12">
+    <div class="bg-white shadow-lg rounded-xl p-8">
+        <h2 class="text-3xl font-extrabold text-center mb-6 text-gray-900">Rezultatele Quiz-ului</h2>
+        <p class="text-lg text-center mb-4 text-gray-700">Scorul: {{ score }} / {{ total_questions }}</p>
+        
+        <!-- Progress Bar Container -->
+        <div class="w-full bg-gray-200 rounded-full h-6 mb-4 overflow-hidden">
+            <div 
+                id="progress-bar" 
+                class="h-full rounded-full"
+                style="width: 0%; background-color: rgba(34, 197, 94, 1);"
+                data-percentage="{{ percentage|floatformat:1 }}">
             </div>
-            <p class="mt-2 text-center">Procentajul: {{ percentage }}%</p>
-            <div class="d-flex justify-content-center">
-                <a href="{% url 'home' %}" class="btn btn-primary mt-3">Acasă</a>
-            </div>
+        </div>
+
+        <p class="text-lg text-center mt-4 text-gray-700">Procentajul: {{ percentage }}%</p>
+
+        <h3 class="text-xl font-semibold mt-8 mb-4 text-gray-800">Răspunsurile la întrebări:</h3>
+        
+        <ul class="space-y-6">
+            {% for question in questions %}
+                <li class="bg-gray-50 shadow-md p-6 rounded-lg">
+                    <p class="text-lg font-semibold text-gray-900">{{ question.content }}</p>
+
+                    {% for user_answer in user_answers %}
+                        {% if user_answer.question_id == question.id %}
+                            <ul class="mt-4 space-y-3">
+                                {% for answer in question.get_answers %}
+                                    <li class="{% if answer.id == user_answer.correct %}text-green-600 font-semibold{% elif answer.id == user_answer.selected %}text-red-600{% else %}text-gray-800{% endif %} flex items-center space-x-2">
+                                        <span class="text-lg">{{ answer.content }}</span>
+                                        {% if answer.id == user_answer.correct %}
+                                            <span class="text-green-500 font-medium">(Corect)</span>
+                                        {% elif answer.id == user_answer.selected %}
+                                            <span class="text-red-500 font-medium">(Răspunsul dvs.)</span>
+                                        {% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    {% endfor %}
+                </li>
+            {% endfor %}
+        </ul>
+
+        <div class="flex justify-center mt-8">
+            <a href="{% url 'home' %}" class="px-8 py-3 bg-blue-600 text-white text-lg rounded-lg hover:bg-blue-700 transition">
+                Acasă
+            </a>
         </div>
     </div>
 </div>
+
+<!-- Script for Progress Bar Animation -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const progressBar = document.getElementById("progress-bar");
+
+    // Fetch the target width from the data attribute
+    let targetWidth = progressBar.getAttribute("data-percentage");
+
+    // Convert to valid CSS width
+    if (targetWidth.includes(',')) {
+        targetWidth = targetWidth.replace(',', '.'); // Replace commas with dots
+    }
+    console.log("Target width:", targetWidth); // Debugging
+
+    // Apply animation and set the width
+    setTimeout(() => {
+        progressBar.style.transition = "width 2s ease-in-out";
+        progressBar.style.width = `${targetWidth}%`;
+    }, 500);
+});
+</script>
 {% endblock content %}

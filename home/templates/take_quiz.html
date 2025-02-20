@@ -1,34 +1,51 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="container mt-5">
-    <h2>{{ quiz.title }}</h2>
-    <p class="mb-4">Întrebarea {{ question_number }} din {{ total_questions }}</p>
+<div class="container mx-auto mt-12">
+    <!-- Заголовок Quiz -->
+    <h2 class="text-4xl font-extrabold mb-8 text-center text-gray-900">{{ quiz.title }}</h2>
+    <p class="mb-8 text-center text-lg text-gray-600">Întrebarea {{ question_number }} din {{ total_questions }}</p>
+    
     {% if current_question %}
-    <div class="card mb-3">
-        <div class="card-body">
-            <h5 class="card-title">{{ current_question.content }}</h5>
-            <form method="post">
-                {% csrf_token %}
-                <input type="hidden" name="question_id" value="{{ current_question.id }}">
-                <div class="list-group">
-                    {% for option in current_question.answer_set.all %}
-                    <label class="list-group-item list-group-item-action">
-                        <div class="form-check">
-                            <input class="form-check-input me-1" type="radio" name="selected_answer_id" id="option_{{ option.id }}" value="{{ option.id }}">
-                            <span>{{ option.content }}</span>
-                        </div>
-                    </label>
-                    {% endfor %}
-                </div>
-                <button type="submit" class="btn btn-primary mt-3">Următoare</button>
-            </form>
-        </div>
+    <!-- Вопрос и варианты -->
+    <div class="bg-white shadow-lg rounded-xl p-8 mb-12 text-center">
+        <h5 class="text-2xl font-semibold mb-6 text-gray-800">{{ current_question.content }}</h5>
+        <form method="post" class="space-y-6">
+            {% csrf_token %}
+            <input type="hidden" name="question_id" value="{{ current_question.id }}">
+            
+            <div class="space-y-4">
+                {% for option in current_question.answer_set.all %}
+                <label for="option_{{ option.id }}" class="block bg-gray-50 border border-gray-300 p-4 rounded-lg hover:bg-blue-50 cursor-pointer shadow-sm transition duration-150 ease-in-out">
+                    <div class="flex items-center">
+                        <input id="option_{{ option.id }}" class="form-radio h-5 w-5 text-blue-600 mr-4" type="radio" name="selected_answer_id" value="{{ option.id }}">
+                        <span class="text-gray-700 text-lg">{{ option.content }}</span>
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+            
+            <button type="submit" class="mt-6 w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition">
+                Următoare
+            </button>
+        </form>
     </div>
+    
     {% else %}
-    <div class="alert alert-success" role="alert">
-        Congratulations! You have completed the quiz.
+    <!-- Сообщение об успешном завершении -->
+    <div class="bg-green-50 border border-green-300 text-green-700 p-8 rounded-lg text-center shadow-md">
+        <h5 class="text-2xl font-bold">Felicitări!</h5>
+        <p class="text-lg mt-2">Ați completat cu succes quiz-ul.</p>
+        <a href="{% url 'home' %}" class="mt-6 inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition">
+            Înapoi acasă
+        </a>
     </div>
     {% endif %}
 </div>
+
+{% if error %}
+<div class="text-red-500 bg-red-50 border border-red-300 p-4 rounded mb-6">
+    {{ error }}
+</div>
+{% endif %}
 {% endblock content %}
