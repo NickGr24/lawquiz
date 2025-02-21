@@ -1,0 +1,20 @@
+venv/
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# 🛠 Django и Gunicorn
+db.sqlite3
+*.log
+instance/
+media/
+staticfiles/
+static/
+gunicorn.sock
+
+# 📂 IDE и редакторы
+.vscode/
+.idea/
+*.swp
+*.swo
