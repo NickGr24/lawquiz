@@ -1,13 +1,53 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth import login, authenticate
-from django.contrib.auth.forms import AuthenticationForm
-from django.contrib.auth import logout
-from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth import login, authenticate, logout
+from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from .models import Discipline, Quiz, Question, Answer, Marks_Of_User
-from .forms import QuestionForm, AnswerForm, QuizForm
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import JsonResponse
-from django.db import IntegrityError
+import json
+
+def is_admin(user):
+    return user.is_superuser
+
+@login_required
+@user_passes_test(is_admin)
+def add_question(request):
+    if request.method == "POST":
+        discipline_id = request.POST.get("discipline")
+        quiz_id = request.POST.get("quiz")
+        question_text = request.POST.get("question")
+        answers = request.POST.getlist("answers[]")  # Получаем все ответы из формы
+        correct_index = request.POST.get("correct_answer")  # Получаем индекс правильного ответа
+
+        if not (discipline_id and quiz_id and question_text and answers and correct_index is not None):
+            return JsonResponse({"error": "Toate câmpurile sunt obligatorii"}, status=400)
+
+        quiz = get_object_or_404(Quiz, id=quiz_id)
+        question = Question.objects.create(content=question_text, quiz=quiz)
+
+        # Добавляем ответы
+        for index, answer_text in enumerate(answers):
+            is_correct = (str(index) == correct_index)  # Преобразуем индекс в строку
+            Answer.objects.create(content=answer_text, correct=is_correct, question=question)
+
+        return JsonResponse({"success": "Întrebarea a fost adăugată cu succes!"})
+
+    disciplines = Discipline.objects.all()
+    return render(request, "add_questions.html", {"disciplines": disciplines})
+@login_required
+@user_passes_test(is_admin)
+def get_quizzes(request):
+    if request.method == "POST":
+        data = json.loads(request.body)
+        discipline_id = data.get("discipline_id")
+        if discipline_id:
+            quizzes = Quiz.objects.filter(discipline_id=discipline_id)
+            quizzes_html = "".join(
+                f'<option value="{quiz.id}">{quiz.title}</option>'
+                for quiz in quizzes
+            )
+            return JsonResponse({"quizzes_html": quizzes_html})
+    return JsonResponse({"error": "Invalid request"}, status=400)
 
 def home(request):
     disciplines = Discipline.objects.all()
@@ -165,49 +205,3 @@ def login_view(request):
 def logout_view(request):
     logout(request)
     return redirect('home') 
-
-@login_required
-def get_quizzes(request):
-    if request.method == 'POST' and request.is_ajax():
-        discipline_id = request.POST.get('discipline_id')  # Получаем id выбранной дисциплины
-        if discipline_id:
-            # Получаем все квизы, относящиеся к выбранной дисциплине
-            quizzes = Quiz.objects.filter(discipline_id=discipline_id)
-            # Создаем список квизов в формате JSON
-            quizzes_list = [{'id': quiz.id, 'title': quiz.title} for quiz in quizzes]
-            return JsonResponse({'quizzes': quizzes_list})
-        else:
-            return JsonResponse({'error': 'Invalid discipline id'})
-    else:
-        return JsonResponse({'error': 'Invalid request'})
-    
-@login_required
-def add_question(request):
-    disciplines = Discipline.objects.all()
-    form = QuestionForm()
-
-    if request.method == 'POST':
-        form = QuestionForm(request.POST)
-        if form.is_valid():
-            discipline_id = form.cleaned_data['discipline']
-            quiz_id = form.cleaned_data['quiz']
-            question_text = form.cleaned_data['content']
-            correct_answer_index = int(form.cleaned_data['correct_answer'])
-
-            # Получаем объекты дисциплины и квиза
-            discipline = get_object_or_404(Discipline, id=discipline_id)
-            quiz = get_object_or_404(Quiz, id=quiz_id)
-
-            # Создаем объект вопроса
-            question = Question.objects.create(quiz=quiz, content=question_text)
-
-            # Создаем объекты ответов
-            for i in range(1, 6):
-                answer_text = form.cleaned_data.get(f'answer{i}', None)
-                if answer_text:
-                    is_correct = (i == correct_answer_index)
-                    Answer.objects.create(question=question, content=answer_text, correct=is_correct)
-
-            return redirect('question_added_successfully')  # Перенаправляем на страницу успешного добавления
-
-    return render(request, 'add_questions.html', {'form': form, 'disciplines': disciplines})

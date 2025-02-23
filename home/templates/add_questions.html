@@ -1,93 +1,110 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title text-center">Adaugă Întrebări</h5>
-                    <form method="post">
-                        {% csrf_token %}
-                        <div class="form-group">
-                            <label for="discipline">Discipline</label>
-                            <select class="form-control" id="discipline" name="discipline">
-                                {% for discipline in disciplines %}
-                                    <option value="{{ discipline.id }}">{{ discipline.name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="quiz">Quiz</label>
-                            <select class="form-control" id="quiz" name="quiz">
-                                <option value="">Выберите дисциплину сначала</option>
-                            </select>
-                        </div>
-                        <!-- Остальные поля формы -->
-                        <button type="submit" class="btn btn-primary">Ok</button>
-                    </form>
-                </div>
+<div class="max-w-3xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-lg">
+    <h2 class="text-2xl font-semibold text-center mb-6">Adaugă Întrebare</h2>
+    
+    <form method="post" id="questionForm">
+        {% csrf_token %}
+
+        <!-- Выбор дисциплины -->
+        <div class="mb-4">
+            <label for="discipline" class="block font-medium text-gray-700">Discipline</label>
+            <select id="discipline" name="discipline" required class="w-full mt-1 p-2 border rounded-lg">
+                <option value="">Alege disciplina</option>
+                {% for discipline in disciplines %}
+                    <option value="{{ discipline.id }}">{{ discipline.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Выбор квиза -->
+        <div class="mb-4">
+            <label for="quiz" class="block font-medium text-gray-700">Quiz</label>
+            <select id="quiz" name="quiz" required class="w-full mt-1 p-2 border rounded-lg">
+                <option value="">Alege o disciplină mai întâi</option>
+            </select>
+        </div>
+
+        <!-- Поле для вопроса -->
+        <div class="mb-4">
+            <label for="question" class="block font-medium text-gray-700">Întrebarea</label>
+            <input type="text" id="question" name="question" required class="w-full mt-1 p-2 border rounded-lg">
+        </div>
+
+        <!-- Блок для ответов -->
+        <div id="answers" class="mb-4">
+            <label class="block font-medium text-gray-700">Răspunsuri</label>
+            <div class="flex items-center space-x-2 mt-2 answer-group">
+                <input type="text" name="answers[]" required class="w-full p-2 border rounded-lg">
+                <input type="radio" name="correct_answer" value="0" required class="w-4 h-4">
+                <span class="text-gray-700">Corect</span>
             </div>
         </div>
-    </div>
+
+        <!-- Кнопки -->
+        <div class="flex space-x-4">
+            <button type="button" id="add-answer" class="px-4 py-2 bg-gray-300 rounded-lg">Adaugă răspuns</button>
+            <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Salvează</button>
+        </div>
+    </form>
 </div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Обработчик события изменения выбора дисциплины
-        document.getElementById('discipline').addEventListener('change', function() {
-            let disciplineId = this.value;
-            let quizSelect = document.getElementById('quiz');
-            
-            // Очистим список квизов
-            quizSelect.innerHTML = '<option value="">Загрузка...</option>';
-            
-            // Отправляем AJAX запрос на сервер для получения списка квизов
-            fetch('/get_quizzes/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken') // Получаем CSRF токен из куки
-                },
-                body: JSON.stringify({'discipline_id': disciplineId})
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                if ('quizzes_html' in data) {
-                    quizSelect.innerHTML = data.quizzes_html;
-                } else if ('error' in data) {
-                    throw new Error(data.error);
-                } else {
-                    throw new Error('Invalid response from server');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error.message);
-                quizSelect.innerHTML = '<option value="">Ошибка при загрузке квизов</option>';
-            });
-        });
-    });
-    
-    // Функция для получения значения CSRF токена из куки
-    function getCookie(name) {
-        let cookieValue = null;
-        if (document.cookie && document.cookie !== '') {
-            let cookies = document.cookie.split(';');
-            for (let i = 0; i < cookies.length; i++) {
-                let cookie = cookies[i].trim();
-                if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                    break;
-                }
+// Автоматическая загрузка квизов при выборе дисциплины
+document.getElementById('discipline').addEventListener('change', function() {
+    let disciplineId = this.value;
+    let quizSelect = document.getElementById('quiz');
+    quizSelect.innerHTML = '<option value="">Se încarcă...</option>';
+
+    fetch('/get_quizzes/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({'discipline_id': disciplineId})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.quizzes_html) {
+            quizSelect.innerHTML = data.quizzes_html;
+        } else {
+            quizSelect.innerHTML = '<option value="">Eroare la încărcare</option>';
+        }
+    })
+    .catch(error => console.error('Error:', error));
+});
+
+// Добавление нового ответа
+document.getElementById('add-answer').addEventListener('click', function() {
+    let answersDiv = document.getElementById('answers');
+    let index = answersDiv.children.length;
+    let div = document.createElement('div');
+    div.classList.add('flex', 'items-center', 'space-x-2', 'mt-2', 'answer-group');
+    div.innerHTML = `
+        <input type="text" name="answers[]" required class="w-full p-2 border rounded-lg">
+        <input type="radio" name="correct_answer" value="${index}" class="w-4 h-4">
+        <span class="text-gray-700">Corect</span>
+    `;
+    answersDiv.appendChild(div);
+});
+
+// Функция получения CSRF-токена
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        let cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            let cookie = cookies[i].trim();
+            if (cookie.startsWith(name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
             }
         }
-        return cookieValue;
     }
-    </script>
-    
-{% endblock content %}
+    return cookieValue;
+}
+</script>
+
+{% endblock %}
