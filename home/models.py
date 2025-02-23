@@ -39,7 +39,7 @@ class Question(models.Model):
         verbose_name_plural = 'Întrebări'
     
 class Answer(models.Model):
-    content = models.CharField(max_length=200)
+    content = models.CharField(max_length=600)
     correct = models.BooleanField(default=False)
     question = models.ForeignKey(Question, on_delete=models.CASCADE)
     
