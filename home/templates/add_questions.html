@@ -76,10 +76,11 @@ document.getElementById('discipline').addEventListener('change', function() {
     .catch(error => console.error('Error:', error));
 });
 
-// Добавление нового ответа
+// Добавление нового ответа (исправленный код)
 document.getElementById('add-answer').addEventListener('click', function() {
     let answersDiv = document.getElementById('answers');
-    let index = answersDiv.children.length;
+    let index = answersDiv.querySelectorAll('.answer-group').length;
+
     let div = document.createElement('div');
     div.classList.add('flex', 'items-center', 'space-x-2', 'mt-2', 'answer-group');
     div.innerHTML = `
@@ -88,6 +89,27 @@ document.getElementById('add-answer').addEventListener('click', function() {
         <span class="text-gray-700">Corect</span>
     `;
     answersDiv.appendChild(div);
+});
+
+// Проверка перед отправкой (исправленный код)
+document.getElementById('questionForm').addEventListener('submit', function(event) {
+    let discipline = document.getElementById('discipline').value.trim();
+    let quiz = document.getElementById('quiz').value.trim();
+    let question = document.getElementById('question').value.trim();
+    let answers = document.querySelectorAll('input[name="answers[]"]');
+    let correctAnswer = document.querySelector('input[name="correct_answer"]:checked');
+
+    let validAnswers = 0;
+    answers.forEach(answer => {
+        if (answer.value.trim() !== '') {
+            validAnswers++;
+        }
+    });
+
+    if (!discipline || !quiz || !question || validAnswers < 2 || !correctAnswer) {
+        event.preventDefault();
+        alert("Toate câmpurile sunt obligatorii și trebuie să existe cel puțin două răspunsuri.");
+    }
 });
 
 // Функция получения CSRF-токена

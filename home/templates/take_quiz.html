@@ -8,13 +8,13 @@
     
     {% if current_question %}
     <!-- Вопрос и варианты -->
-    <div class="bg-white shadow-lg rounded-xl p-8 mb-12 text-center">
+    <div id="quiz-container" class="bg-white shadow-lg rounded-xl p-8 mb-12 text-center">
         <h5 class="text-2xl font-semibold mb-6 text-gray-800">{{ current_question.content }}</h5>
         <form method="post" class="space-y-6">
             {% csrf_token %}
             <input type="hidden" name="question_id" value="{{ current_question.id }}">
             
-            <div class="space-y-4">
+            <div class="space-y-4" id="answer-section">
                 {% for option in current_question.answer_set.all %}
                 <label for="option_{{ option.id }}" class="block bg-gray-50 border border-gray-300 p-4 rounded-lg hover:bg-blue-50 cursor-pointer shadow-sm transition duration-150 ease-in-out">
                     <div class="flex items-center">
@@ -48,4 +48,15 @@
     {{ error }}
 </div>
 {% endif %}
+
+<!-- Скрипт для автоматической прокрутки к ответам -->
+<script>
+    window.onload = function() {
+        let answerSection = document.getElementById('quiz-container');
+        if (answerSection) {
+            answerSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    };
+</script>
+
 {% endblock content %}

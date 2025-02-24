@@ -13,21 +13,38 @@ def is_admin(user):
 @user_passes_test(is_admin)
 def add_question(request):
     if request.method == "POST":
-        discipline_id = request.POST.get("discipline")
-        quiz_id = request.POST.get("quiz")
-        question_text = request.POST.get("question")
-        answers = request.POST.getlist("answers[]")  # Получаем все ответы из формы
-        correct_index = request.POST.get("correct_answer")  # Получаем индекс правильного ответа
+        discipline_id = request.POST.get("discipline", "").strip()
+        quiz_id = request.POST.get("quiz", "").strip()
+        question_text = request.POST.get("question", "").strip()
+        answers = request.POST.getlist("answers[]")
+        correct_index = request.POST.get("correct_answer")
 
-        if not (discipline_id and quiz_id and question_text and answers and correct_index is not None):
+        # Проверяем, что все обязательные поля заполнены
+        if not (discipline_id and quiz_id and question_text and answers and correct_index):
             return JsonResponse({"error": "Toate câmpurile sunt obligatorii"}, status=400)
 
+        # Убеждаемся, что у вопроса есть хотя бы два ответа
+        answers = [answer.strip() for answer in answers if answer.strip()]
+        if len(answers) < 2:
+            return JsonResponse({"error": "Întrebarea trebuie să aibă cel puțin două răspunsuri"}, status=400)
+
+        try:
+            correct_index = int(correct_index)  # Преобразуем в int
+        except ValueError:
+            return JsonResponse({"error": "Răspunsul corect selectat nu este valid"}, status=400)
+
+        if correct_index < 0 or correct_index >= len(answers):
+            return JsonResponse({"error": "Indexul răspunsului corect este invalid"}, status=400)
+
+        # Получаем объект квиза
         quiz = get_object_or_404(Quiz, id=quiz_id)
+        
+        # Создаём вопрос
         question = Question.objects.create(content=question_text, quiz=quiz)
 
-        # Добавляем ответы
+        # Добавляем ответы и устанавливаем правильный
         for index, answer_text in enumerate(answers):
-            is_correct = (str(index) == correct_index)  # Преобразуем индекс в строку
+            is_correct = (index == correct_index)
             Answer.objects.create(content=answer_text, correct=is_correct, question=question)
 
         return JsonResponse({"success": "Întrebarea a fost adăugată cu succes!"})
