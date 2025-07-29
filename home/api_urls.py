@@ -10,6 +10,10 @@ from .api_views import (
     QuizViewSet,
     QuestionViewSet,
     AnswerViewSet,
+    user_profile,
+    discipline_roadmap,
+    user_streak,
+    update_streak,
 )
 
 # Create DRF router
@@ -24,6 +28,16 @@ urlpatterns = [
     path('auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    
+    # User endpoints
+    path('me/', user_profile, name='user_profile'),
+    
+    # Roadmap endpoint
+    path('roadmap/<int:discipline_id>/', discipline_roadmap, name='discipline_roadmap'),
+    
+    # Streak endpoints
+    path('streak/', user_streak, name='user_streak'),
+    path('streak/update/', update_streak, name='update_streak'),
     
     # API endpoints
     path('', include(router.urls)),

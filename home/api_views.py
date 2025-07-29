@@ -1,16 +1,17 @@
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 
-from .models import Discipline, Quiz, Question, Answer, Marks_Of_User
+from .models import Discipline, Quiz, Question, Answer, Marks_Of_User, UserStreak
 from .serializers import (
-    DisciplineSerializer, DisciplineListSerializer,
+    DisciplineSerializer, DisciplineListSerializer, DisciplineRoadmapSerializer,
     QuizSerializer, QuizListSerializer, QuizTakeSerializer,
     QuestionSerializer, AnswerSerializer,
-    QuizSubmissionSerializer, UserScoreSerializer
+    QuizSubmissionSerializer, UserScoreSerializer,
+    UserProfileSerializer, UserStreakSerializer
 )
 
 
@@ -43,7 +44,7 @@ class QuizViewSet(viewsets.ReadOnlyModelViewSet):
             return QuizTakeSerializer
         return QuizSerializer
     
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
     def take(self, request, pk=None):
         """Get quiz questions without revealing correct answers"""
         quiz = self.get_object()
@@ -133,13 +134,17 @@ class QuizViewSet(viewsets.ReadOnlyModelViewSet):
         # Calculate percentage score
         score_percentage = (correct_answers / total_questions) * 100
         
-        # Save or update user score
+        # Save or update user score and update streak
         with transaction.atomic():
             marks, created = Marks_Of_User.objects.update_or_create(
                 quiz=quiz,
                 user=request.user,
                 defaults={'score': score_percentage}
             )
+            
+            # Update user streak
+            streak, created = UserStreak.objects.get_or_create(user=request.user)
+            streak.update_streak()
         
         return Response({
             'score': score_percentage,
@@ -160,10 +165,56 @@ class QuizViewSet(viewsets.ReadOnlyModelViewSet):
 class QuestionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Question.objects.all()
     serializer_class = QuestionSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAdminUser]  # Only admins can access full questions with answers
 
 
 class AnswerViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Answer.objects.all()
     serializer_class = AnswerSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAdminUser]  # Only admins can access full answers
+
+
+# User Profile endpoint
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_profile(request):
+    """Get current user's profile information"""
+    serializer = UserProfileSerializer(request.user)
+    return Response(serializer.data)
+
+
+# Roadmap endpoint
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def discipline_roadmap(request, discipline_id):
+    """Get user's progress roadmap for a specific discipline"""
+    try:
+        discipline = Discipline.objects.get(id=discipline_id)
+    except Discipline.DoesNotExist:
+        return Response(
+            {'error': 'Discipline not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    serializer = DisciplineRoadmapSerializer(discipline, context={'request': request})
+    return Response(serializer.data)
+
+
+# Streak endpoints
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_streak(request):
+    """Get current user's streak information"""
+    streak, created = UserStreak.objects.get_or_create(user=request.user)
+    serializer = UserStreakSerializer(streak)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_streak(request):
+    """Manually update user's streak (for daily check-ins)"""
+    streak, created = UserStreak.objects.get_or_create(user=request.user)
+    streak.update_streak()
+    serializer = UserStreakSerializer(streak)
+    return Response(serializer.data)

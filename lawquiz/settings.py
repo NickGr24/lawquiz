@@ -164,9 +164,13 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:8081",
     "http://127.0.0.1:8081",
+    "http://localhost:19006",  # Expo local dev
+    "http://127.0.0.1:19006",  # Expo local dev alternative
+    "https://legalia.app",     # Production frontend
+    "https://lawquiz.md",      # Production frontend alternative
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True  # For development only
+CORS_ALLOW_ALL_ORIGINS = True  # For development only - set to False in production
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_HEADERS = [

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Discipline, Quiz, Question, Answer, Marks_Of_User
+from .models import Discipline, Quiz, Question, Answer, Marks_Of_User, UserStreak
 from django.contrib.auth.models import User
 
 
@@ -126,3 +126,67 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name']
+
+
+class UserStreakSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserStreak
+        fields = ['current_streak', 'longest_streak', 'last_active_date']
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    streak = UserStreakSerializer(read_only=True)
+    total_quizzes_completed = serializers.SerializerMethodField()
+    average_score = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 
+                 'date_joined', 'streak', 'total_quizzes_completed', 'average_score']
+    
+    def get_total_quizzes_completed(self, obj):
+        return Marks_Of_User.objects.filter(user=obj).count()
+    
+    def get_average_score(self, obj):
+        scores = Marks_Of_User.objects.filter(user=obj).values_list('score', flat=True)
+        if scores:
+            return round(sum(scores) / len(scores), 2)
+        return 0
+
+
+class RoadmapQuizSerializer(serializers.ModelSerializer):
+    is_completed = serializers.SerializerMethodField()
+    score = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Quiz
+        fields = ['id', 'title', 'is_completed', 'score']
+    
+    def get_is_completed(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return Marks_Of_User.objects.filter(quiz=obj, user=request.user).exists()
+        return False
+    
+    def get_score(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            try:
+                mark = Marks_Of_User.objects.get(quiz=obj, user=request.user)
+                return mark.score
+            except Marks_Of_User.DoesNotExist:
+                return None
+        return None
+
+
+class DisciplineRoadmapSerializer(serializers.ModelSerializer):
+    quizzes = RoadmapQuizSerializer(source='quiz_set', many=True, read_only=True)
+    
+    class Meta:
+        model = Discipline
+        fields = ['discipline_id', 'name', 'quizzes']
+        
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['discipline_id'] = instance.id
+        return representation

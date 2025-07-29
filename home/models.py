@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 class Discipline(models.Model):
     name = models.CharField(max_length=50, verbose_name="Denumirea disciplinei")
@@ -54,6 +55,7 @@ class Marks_Of_User(models.Model):
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     score = models.FloatField()
+    completed_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
         return str(self.quiz)
@@ -61,3 +63,46 @@ class Marks_Of_User(models.Model):
     class Meta:
         verbose_name = 'Scorul'
         verbose_name_plural = 'Scoruri'
+        unique_together = ['quiz', 'user']
+
+
+class UserStreak(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='streak')
+    current_streak = models.IntegerField(default=0)
+    longest_streak = models.IntegerField(default=0)
+    last_active_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.user.username} - Current: {self.current_streak} days"
+    
+    def update_streak(self):
+        """Update user streak based on quiz completion"""
+        today = timezone.now().date()
+        
+        if self.last_active_date is None:
+            # First time activity
+            self.current_streak = 1
+            self.last_active_date = today
+        elif self.last_active_date == today:
+            # Already active today, no change
+            return
+        elif self.last_active_date == today - timezone.timedelta(days=1):
+            # Consecutive day
+            self.current_streak += 1
+            self.last_active_date = today
+        else:
+            # Streak broken
+            self.current_streak = 1
+            self.last_active_date = today
+        
+        # Update longest streak
+        if self.current_streak > self.longest_streak:
+            self.longest_streak = self.current_streak
+        
+        self.save()
+    
+    class Meta:
+        verbose_name = 'User Streak'
+        verbose_name_plural = 'User Streaks'
