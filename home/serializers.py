@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Discipline, Quiz, Question, Answer, Marks_Of_User, UserStreak
+from .models import Discipline, Quiz, Question, Answer, Marks_Of_User, UserStreak, UserProfile
 from django.contrib.auth.models import User
 
 
@@ -122,10 +122,79 @@ class UserScoreSerializer(serializers.ModelSerializer):
         fields = ['id', 'quiz', 'quiz_title', 'discipline_name', 'score']
 
 
+class UserProgressSerializer(serializers.ModelSerializer):
+    """Serializer for user progress tracking"""
+    quiz_title = serializers.CharField(source='quiz.title', read_only=True)
+    quiz_id = serializers.IntegerField(source='quiz.id', read_only=True)
+    discipline_id = serializers.IntegerField(source='quiz.discipline.id', read_only=True)
+    discipline_name = serializers.CharField(source='quiz.discipline.name', read_only=True)
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    
+    class Meta:
+        model = Marks_Of_User
+        fields = [
+            'id', 'user_id', 'quiz_id', 'quiz_title', 
+            'discipline_id', 'discipline_name', 'score', 
+            'completed', 'completed_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'user_id', 'completed', 'completed_at', 'updated_at']
+
+
+class UserProgressCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating user progress records"""
+    
+    class Meta:
+        model = Marks_Of_User
+        fields = ['quiz', 'score']
+    
+    def validate_quiz(self, value):
+        """Ensure quiz exists and user hasn't already completed it"""
+        request = self.context.get('request')
+        if request and request.user:
+            # Check if user already has progress for this quiz
+            existing = Marks_Of_User.objects.filter(
+                quiz=value, 
+                user=request.user
+            ).first()
+            if existing:
+                # Allow updating existing progress
+                self.instance = existing
+        return value
+    
+    def validate_score(self, value):
+        """Ensure score is between 0 and 100"""
+        if value < 0 or value > 100:
+            raise serializers.ValidationError("Score must be between 0 and 100")
+        return value
+    
+    def create(self, validated_data):
+        """Create or update user progress"""
+        request = self.context.get('request')
+        validated_data['user'] = request.user
+        
+        # Check if instance exists from validation
+        if hasattr(self, 'instance') and self.instance:
+            # Update existing record
+            for attr, value in validated_data.items():
+                setattr(self.instance, attr, value)
+            self.instance.save()
+            return self.instance
+        else:
+            # Create new record
+            return super().create(validated_data)
+
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name']
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ['timezone', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
 
 
 class UserStreakSerializer(serializers.ModelSerializer):
@@ -134,15 +203,16 @@ class UserStreakSerializer(serializers.ModelSerializer):
         fields = ['current_streak', 'longest_streak', 'last_active_date']
 
 
-class UserProfileSerializer(serializers.ModelSerializer):
+class UserDetailSerializer(serializers.ModelSerializer):
     streak = UserStreakSerializer(read_only=True)
+    profile = UserProfileSerializer(read_only=True)
     total_quizzes_completed = serializers.SerializerMethodField()
     average_score = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name', 
-                 'date_joined', 'streak', 'total_quizzes_completed', 'average_score']
+                 'date_joined', 'streak', 'profile', 'total_quizzes_completed', 'average_score']
     
     def get_total_quizzes_completed(self, obj):
         return Marks_Of_User.objects.filter(user=obj).count()

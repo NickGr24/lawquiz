@@ -3,15 +3,16 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from django.shortcuts import get_object_or_404
-from django.db import transaction
+from django.db import transaction, models
 
-from .models import Discipline, Quiz, Question, Answer, Marks_Of_User, UserStreak
+from .models import Discipline, Quiz, Question, Answer, Marks_Of_User, UserStreak, UserProfile
 from .serializers import (
     DisciplineSerializer, DisciplineListSerializer, DisciplineRoadmapSerializer,
     QuizSerializer, QuizListSerializer, QuizTakeSerializer,
     QuestionSerializer, AnswerSerializer,
     QuizSubmissionSerializer, UserScoreSerializer,
-    UserProfileSerializer, UserStreakSerializer
+    UserDetailSerializer, UserStreakSerializer, UserProfileSerializer,
+    UserProgressSerializer, UserProgressCreateSerializer
 )
 
 
@@ -142,16 +143,41 @@ class QuizViewSet(viewsets.ReadOnlyModelViewSet):
                 defaults={'score': score_percentage}
             )
             
-            # Update user streak
-            streak, created = UserStreak.objects.get_or_create(user=request.user)
-            streak.update_streak()
+            # Update user streak with timezone awareness
+            # Get user's timezone from request headers or profile
+            user_timezone_str = request.headers.get('X-User-Timezone')
+            user_timezone = None
+            
+            if user_timezone_str:
+                try:
+                    import pytz
+                    user_timezone = pytz.timezone(user_timezone_str)
+                    # Also update user profile if different
+                    profile = UserProfile.get_or_create_for_user(request.user)
+                    if profile.timezone != user_timezone_str:
+                        profile.timezone = user_timezone_str
+                        profile.save()
+                except Exception:
+                    user_timezone = None
+            
+            # Update streak using the class method
+            streak, streak_updated = UserStreak.update_streak_for_user(
+                request.user, 
+                user_timezone
+            )
         
         return Response({
             'score': score_percentage,
             'correct_answers': correct_answers,
             'total_questions': total_questions,
             'results': results,
-            'passed': score_percentage >= 70  # You can adjust the passing score
+            'passed': score_percentage >= 70,  # You can adjust the passing score
+            'streak_info': {
+                'current_streak': streak.current_streak,
+                'longest_streak': streak.longest_streak,
+                'streak_updated': streak_updated,
+                'last_active_date': streak.last_active_date.isoformat() if streak.last_active_date else None
+            }
         })
     
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
@@ -174,13 +200,123 @@ class AnswerViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAdminUser]  # Only admins can access full answers
 
 
+class UserProgressViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing user quiz progress.
+    Allows users to save and retrieve their quiz progress.
+    """
+    serializer_class = UserProgressSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Only return progress for the authenticated user"""
+        return Marks_Of_User.objects.filter(user=self.request.user)
+    
+    def get_serializer_class(self):
+        """Use different serializers for different actions"""
+        if self.action in ['create', 'update', 'partial_update']:
+            return UserProgressCreateSerializer
+        return UserProgressSerializer
+    
+    def perform_create(self, serializer):
+        """Ensure the progress is saved for the authenticated user"""
+        serializer.save(user=self.request.user)
+    
+    def perform_update(self, serializer):
+        """Ensure user can only update their own progress"""
+        if serializer.instance.user != self.request.user:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You can only update your own progress.")
+        serializer.save()
+    
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """Get user's progress summary"""
+        progress_records = self.get_queryset()
+        total_completed = progress_records.filter(completed=True).count()
+        total_attempted = progress_records.count()
+        
+        # Calculate overall average score
+        scores = progress_records.values_list('score', flat=True)
+        average_score = round(sum(scores) / len(scores), 2) if scores else 0
+        
+        # Get discipline breakdown
+        from django.db.models import Count, Avg
+        discipline_stats = (
+            progress_records
+            .values('quiz__discipline__name', 'quiz__discipline__id')
+            .annotate(
+                total_quizzes=Count('id'),
+                completed_quizzes=Count('id', filter=models.Q(completed=True)),
+                avg_score=Avg('score')
+            )
+            .order_by('quiz__discipline__name')
+        )
+        
+        return Response({
+            'total_quizzes_attempted': total_attempted,
+            'total_quizzes_completed': total_completed,
+            'overall_average_score': average_score,
+            'completion_percentage': round((total_completed / total_attempted * 100), 2) if total_attempted > 0 else 0,
+            'discipline_breakdown': list(discipline_stats)
+        })
+    
+    @action(detail=False, methods=['get'])
+    def by_discipline(self, request, discipline_id=None):
+        """Get user's progress for a specific discipline"""
+        discipline_id = request.query_params.get('discipline_id')
+        if not discipline_id:
+            return Response(
+                {'error': 'discipline_id parameter is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            discipline_id = int(discipline_id)
+        except ValueError:
+            return Response(
+                {'error': 'discipline_id must be a valid integer'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        progress_records = self.get_queryset().filter(quiz__discipline__id=discipline_id)
+        serializer = self.get_serializer(progress_records, many=True)
+        return Response(serializer.data)
+
+
 # User Profile endpoint
-@api_view(['GET'])
+@api_view(['GET', 'PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def user_profile(request):
-    """Get current user's profile information"""
-    serializer = UserProfileSerializer(request.user)
-    return Response(serializer.data)
+    """Get or update current user's profile information"""
+    if request.method == 'GET':
+        # Ensure user has a profile
+        UserProfile.get_or_create_for_user(request.user)
+        serializer = UserDetailSerializer(request.user)
+        return Response(serializer.data)
+    
+    elif request.method in ['PUT', 'PATCH']:
+        # Update user timezone or other profile info
+        profile = UserProfile.get_or_create_for_user(request.user)
+        
+        # Handle timezone update
+        timezone_data = request.data.get('timezone')
+        if timezone_data:
+            try:
+                import pytz
+                # Validate timezone
+                pytz.timezone(timezone_data)
+                profile.timezone = timezone_data
+                profile.save()
+            except pytz.UnknownTimeZoneError:
+                return Response(
+                    {'error': 'Invalid timezone provided'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # Return updated profile
+        serializer = UserDetailSerializer(request.user)
+        return Response(serializer.data)
 
 
 # Roadmap endpoint
@@ -204,17 +340,54 @@ def discipline_roadmap(request, discipline_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def user_streak(request):
-    """Get current user's streak information"""
+    """Get current user's streak information with timezone awareness"""
+    # Get or create user profile for timezone info
+    profile = UserProfile.get_or_create_for_user(request.user)
+    
+    # Get or create streak
     streak, created = UserStreak.objects.get_or_create(user=request.user)
+    
+    # Get today in user's timezone for additional info
+    user_today = profile.get_user_today()
+    
     serializer = UserStreakSerializer(streak)
-    return Response(serializer.data)
+    data = serializer.data
+    
+    # Add timezone-aware information
+    data.update({
+        'user_timezone': profile.timezone,
+        'user_today': user_today.isoformat(),
+        'quiz_completed_today': streak.last_active_date == user_today if streak.last_active_date else False
+    })
+    
+    return Response(data)
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def update_streak(request):
-    """Manually update user's streak (for daily check-ins)"""
-    streak, created = UserStreak.objects.get_or_create(user=request.user)
-    streak.update_streak()
+    """Manually update user's streak (for daily check-ins) with timezone support"""
+    # Get user's timezone from request or profile
+    user_timezone_str = request.data.get('timezone') or request.headers.get('X-User-Timezone')
+    user_timezone = None
+    
+    if user_timezone_str:
+        try:
+            import pytz
+            user_timezone = pytz.timezone(user_timezone_str)
+            # Update user profile if different
+            profile = UserProfile.get_or_create_for_user(request.user)
+            if profile.timezone != user_timezone_str:
+                profile.timezone = user_timezone_str
+                profile.save()
+        except Exception:
+            user_timezone = None
+    
+    # Update streak using the enhanced class method
+    streak, streak_updated = UserStreak.update_streak_for_user(request.user, user_timezone)
+    
     serializer = UserStreakSerializer(streak)
-    return Response(serializer.data)
+    data = serializer.data
+    data['streak_updated'] = streak_updated
+    
+    return Response(data)

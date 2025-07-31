@@ -10,6 +10,7 @@ from .api_views import (
     QuizViewSet,
     QuestionViewSet,
     AnswerViewSet,
+    UserProgressViewSet,
     user_profile,
     discipline_roadmap,
     user_streak,
@@ -22,6 +23,7 @@ router.register(r'disciplines', DisciplineViewSet, basename='discipline')
 router.register(r'quizzes', QuizViewSet, basename='quiz')
 router.register(r'questions', QuestionViewSet, basename='question')
 router.register(r'answers', AnswerViewSet, basename='answer')
+router.register(r'user-progress', UserProgressViewSet, basename='user-progress')
 
 urlpatterns = [
     # JWT Authentication endpoints

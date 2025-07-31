@@ -113,7 +113,7 @@ Response:
 
 ## Streak Tracking API
 
-### Get User Streak
+### Get User Streak (Timezone-Aware)
 ```http
 GET /api/streak/
 Authorization: Bearer {token}
@@ -123,21 +123,72 @@ Response:
 {
     "current_streak": 5,
     "longest_streak": 12,
-    "last_active_date": "2024-07-29"
+    "last_active_date": "2024-07-29",
+    "user_timezone": "America/New_York",
+    "user_today": "2024-07-30",
+    "quiz_completed_today": false
 }
 ```
 
-### Update User Streak
+### Update User Streak (with Timezone Support)
 ```http
 POST /api/streak/update/
 Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "timezone": "America/New_York"
+}
 ```
+
+Or pass timezone in header:
+```http
+POST /api/streak/update/
+Authorization: Bearer {token}
+X-User-Timezone: America/New_York
+```
+
 Response:
 ```json
 {
     "current_streak": 6,
     "longest_streak": 12,
-    "last_active_date": "2024-07-30"
+    "last_active_date": "2024-07-30",
+    "streak_updated": true
+}
+```
+
+### Update User Profile (Including Timezone)
+```http
+PUT /api/me/
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "timezone": "Europe/London"
+}
+```
+Response:
+```json
+{
+    "id": 1,
+    "username": "student123",
+    "email": "student@example.com",
+    "first_name": "John",
+    "last_name": "Doe",
+    "date_joined": "2024-01-15T10:30:00Z",
+    "streak": {
+        "current_streak": 5,
+        "longest_streak": 12,
+        "last_active_date": "2024-07-29"
+    },
+    "profile": {
+        "timezone": "Europe/London",
+        "created_at": "2024-07-30T14:30:00Z",
+        "updated_at": "2024-07-30T14:30:00Z"
+    },
+    "total_quizzes_completed": 15,
+    "average_score": 78.5
 }
 ```
 
@@ -265,7 +316,13 @@ Response:
             "correct_answer": "teoria generală a dreptului...",
             "is_correct": true
         }
-    ]
+    ],
+    "streak_info": {
+        "current_streak": 6,
+        "longest_streak": 12,
+        "streak_updated": true,
+        "last_active_date": "2024-07-30"
+    }
 }
 ```
 
@@ -283,6 +340,105 @@ Response:
         "quiz_title": "Teoria generală a dreptului ca știință juridică",
         "discipline_name": "Teoria Generală a Dreptului",
         "score": 72.73
+    }
+]
+```
+
+## User Progress Tracking API
+
+### List User Progress
+```http
+GET /api/user-progress/
+Authorization: Bearer {token}
+```
+Response:
+```json
+[
+    {
+        "id": 1,
+        "user_id": 1,
+        "quiz_id": 4,
+        "quiz_title": "Teoria generală a dreptului ca știință juridică",
+        "discipline_id": 4,
+        "discipline_name": "Teoria Generală a Dreptului",
+        "score": 85.0,
+        "completed": true,
+        "completed_at": "2024-07-30T14:30:00Z",
+        "updated_at": "2024-07-30T14:30:00Z"
+    }
+]
+```
+
+### Create/Update User Progress
+```http
+POST /api/user-progress/
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "quiz": 4,
+    "score": 85.0
+}
+```
+Response:
+```json
+{
+    "id": 1,
+    "user_id": 1,
+    "quiz_id": 4,
+    "quiz_title": "Teoria generală a dreptului ca știință juridică",
+    "discipline_id": 4,
+    "discipline_name": "Teoria Generală a Dreptului",
+    "score": 85.0,
+    "completed": true,
+    "completed_at": "2024-07-30T14:30:00Z",
+    "updated_at": "2024-07-30T14:30:00Z"
+}
+```
+
+### Get User Progress Summary
+```http
+GET /api/user-progress/summary/
+Authorization: Bearer {token}
+```
+Response:
+```json
+{
+    "total_quizzes_attempted": 15,
+    "total_quizzes_completed": 12,
+    "overall_average_score": 78.5,
+    "completion_percentage": 80.0,
+    "discipline_breakdown": [
+        {
+            "quiz__discipline__name": "Teoria Generală a Dreptului",
+            "quiz__discipline__id": 4,
+            "total_quizzes": 5,
+            "completed_quizzes": 4,
+            "avg_score": 82.5
+        }
+    ]
+}
+```
+
+### Get User Progress by Discipline
+```http
+GET /api/user-progress/by_discipline/?discipline_id=4
+Authorization: Bearer {token}
+```
+Response:
+```json
+[
+    {
+        "id": 1,
+        "user_id": 1,
+        "quiz_id": 4,
+        "quiz_title": "Teoria generală a dreptului ca știință juridică",
+        "discipline_id": 4,
+        "discipline_name": "Teoria Generală a Dreptului",
+        "score": 85.0,
+        "completed": true,
+        "completed_at": "2024-07-30T14:30:00Z",
+        "updated_at": "2024-07-30T14:30:00Z"
     }
 ]
 ```
@@ -419,20 +575,177 @@ const getUserScores = async () => {
     return await response.json();
 };
 
+// User Progress API functions
+
+// Get all user progress
+const getUserProgress = async () => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/user-progress/`, {
+        headers,
+    });
+    return await response.json();
+};
+
+// Save quiz progress after completion
+const saveQuizProgress = async (quizId, score) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/user-progress/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+            quiz: quizId,
+            score: score
+        }),
+    });
+    return await response.json();
+};
+
+// Get user progress summary
+const getUserProgressSummary = async () => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/user-progress/summary/`, {
+        headers,
+    });
+    return await response.json();
+};
+
+// Get user progress for specific discipline
+const getUserProgressByDiscipline = async (disciplineId) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/user-progress/by_discipline/?discipline_id=${disciplineId}`, {
+        headers,
+    });
+    return await response.json();
+};
+
+// Enhanced helper function to get auth headers with timezone
+const getAuthHeadersWithTimezone = async () => {
+    const token = await AsyncStorage.getItem('accessToken');
+    
+    // Get user's timezone automatically
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    
+    return {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : '',
+        'X-User-Timezone': timezone,
+    };
+};
+
+// Update user timezone
+const updateUserTimezone = async (timezone) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/me/`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ timezone }),
+    });
+    return await response.json();
+};
+
+// Enhanced submit quiz with automatic timezone handling
+const submitQuizWithTimezone = async (quizId, answers) => {
+    const headers = await getAuthHeadersWithTimezone();
+    const response = await fetch(`${API_BASE_URL}/quizzes/${quizId}/submit/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ answers }),
+    });
+    return await response.json();
+};
+
+// Complete Quiz Flow Example with Timezone and Streak Support
+const QuizScreen = ({ quizId }) => {
+    const [quiz, setQuiz] = useState(null);
+    const [currentQuestion, setCurrentQuestion] = useState(0);
+    const [userAnswers, setUserAnswers] = useState({});
+    const [loading, setLoading] = useState(true);
+    
+    useEffect(() => {
+        loadQuiz();
+        // Set user timezone on app start
+        setUserTimezone();
+    }, [quizId]);
+    
+    const setUserTimezone = async () => {
+        try {
+            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            await updateUserTimezone(timezone);
+        } catch (error) {
+            console.log('Could not set timezone:', error);
+        }
+    };
+    
+    const loadQuiz = async () => {
+        try {
+            const quizData = await takeQuiz(quizId);
+            setQuiz(quizData);
+            setLoading(false);
+        } catch (error) {
+            console.error('Error loading quiz:', error);
+        }
+    };
+    
+    const handleAnswerSelect = (questionId, answerId) => {
+        setUserAnswers(prev => ({
+            ...prev,
+            [questionId]: answerId
+        }));
+    };
+    
+    const handleQuizSubmit = async () => {
+        try {
+            // Submit quiz with timezone-aware headers
+            const results = await submitQuizWithTimezone(quizId, userAnswers);
+            
+            // Automatically save progress (now includes streak info)
+            await saveQuizProgress(quizId, results.score);
+            
+            // Show streak information if updated
+            if (results.streak_info?.streak_updated) {
+                Alert.alert(
+                    'Streak Updated!', 
+                    `Your current streak is ${results.streak_info.current_streak} days!`
+                );
+            }
+            
+            // Navigate to results screen with results data
+            // navigation.navigate('QuizResults', { results });
+            
+        } catch (error) {
+            console.error('Error submitting quiz:', error);
+        }
+    };
+    
+    if (loading) return <Text>Loading quiz...</Text>;
+    
+    return (
+        <View>
+            <Text>{quiz.title}</Text>
+            <Text>Question {currentQuestion + 1} of {quiz.question_count}</Text>
+            {/* Render quiz questions and answers */}
+            <Button title="Submit Quiz" onPress={handleQuizSubmit} />
+        </View>
+    );
+};
+
 // Example usage in a React Native component
 const HomeScreen = () => {
     const [profile, setProfile] = useState(null);
     const [streak, setStreak] = useState(null);
+    const [progressSummary, setProgressSummary] = useState(null);
     
     useEffect(() => {
         const loadUserData = async () => {
             try {
-                const [profileData, streakData] = await Promise.all([
+                const [profileData, streakData, progressData] = await Promise.all([
                     getUserProfile(),
-                    getUserStreak()
+                    getUserStreak(),
+                    getUserProgressSummary()
                 ]);
                 setProfile(profileData);
                 setStreak(streakData);
+                setProgressSummary(progressData);
             } catch (error) {
                 console.error('Error loading user data:', error);
             }
@@ -454,6 +767,8 @@ const HomeScreen = () => {
         <View>
             <Text>Welcome, {profile?.username}!</Text>
             <Text>Current Streak: {streak?.current_streak} days</Text>
+            <Text>Quizzes Completed: {progressSummary?.total_quizzes_completed} / {progressSummary?.total_quizzes_attempted}</Text>
+            <Text>Average Score: {progressSummary?.overall_average_score}%</Text>
             <Button title="Daily Check-in" onPress={handleDailyCheckIn} />
         </View>
     );
@@ -490,6 +805,9 @@ const HomeScreen = () => {
 5. **Nested Serializers**: Optimized data structure with different detail levels
 6. **Security**: Authenticated endpoints for quiz submission and score tracking
 7. **Mobile Optimized**: Clean JSON responses suitable for mobile apps
+8. **Timezone-Aware Streaks**: User streaks calculated based on local timezone
+9. **Progress Tracking**: Comprehensive user progress with completion status
+10. **Automatic Streak Updates**: Streaks update automatically on quiz completion
 
 ## Development Setup
 
@@ -521,13 +839,18 @@ python manage.py runserver
 - `POST /api/auth/token/` - Get JWT token
 
 **Authenticated User Endpoints:**
-- `GET /api/me/` - User profile
+- `GET /api/me/` - User profile with timezone and streak info
+- `PUT /api/me/` - Update user profile (including timezone)
 - `GET /api/roadmap/{discipline_id}/` - User progress roadmap
-- `GET /api/streak/` - User streak information
-- `POST /api/streak/update/` - Update user streak
+- `GET /api/streak/` - User streak information *(timezone-aware)*
+- `POST /api/streak/update/` - Update user streak *(timezone support)*
 - `GET /api/quizzes/{id}/take/` - Take a quiz *(now requires auth)*
-- `POST /api/quizzes/{id}/submit/` - Submit quiz answers
+- `POST /api/quizzes/{id}/submit/` - Submit quiz answers *(auto-updates streak)*
 - `GET /api/quizzes/my_scores/` - User's quiz scores
+- `GET /api/user-progress/` - List user's quiz progress
+- `POST /api/user-progress/` - Create/update quiz progress
+- `GET /api/user-progress/summary/` - Get user progress summary
+- `GET /api/user-progress/by_discipline/` - Get progress by discipline
 
 **Admin Only Endpoints:**
 - `GET /api/questions/` - Full questions with correct answers
@@ -541,6 +864,20 @@ python manage.py runserver
 - **Automatic Streak Tracking**: Streaks update automatically on quiz completion
 - **Data Privacy**: Quiz answers without correct flags for taking quizzes
 - **Permission Separation**: Admin-only access to sensitive quiz data
+
+### Timezone Handling
+
+The API supports timezone-aware streak calculation to ensure accurate daily streak tracking:
+
+- **User Timezone Storage**: Each user's timezone is stored in their profile
+- **Automatic Detection**: Frontend can send timezone via `X-User-Timezone` header
+- **Streak Calculation**: Streaks are calculated based on user's local time, not UTC
+- **Double-Count Prevention**: Multiple quiz completions in the same day only count once
+- **Flexible Updates**: Timezone can be updated via profile endpoint or passed in headers
+
+**Supported Timezone Formats**: Any valid timezone identifier (e.g., `America/New_York`, `Europe/London`, `Asia/Tokyo`)
+
+**Default Timezone**: UTC (if no timezone is specified)
 
 ### CORS Configuration
 ```python
